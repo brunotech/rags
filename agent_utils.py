@@ -64,16 +64,12 @@ def load_agent(
     **kwargs: Any
 ) -> BaseAgent:
     """Load agent."""
-    if isinstance(llm, OpenAI) and is_function_calling_model(llm.model):
-        # get OpenAI Agent
-        agent = OpenAIAgent.from_tools(
-            tools=tools,
-            llm=llm,
-            system_prompt=system_prompt,
-            **kwargs
+    return (
+        OpenAIAgent.from_tools(
+            tools=tools, llm=llm, system_prompt=system_prompt, **kwargs
         )
-    else:
-        agent = ReActAgent.from_tools(
+        if isinstance(llm, OpenAI) and is_function_calling_model(llm.model)
+        else ReActAgent.from_tools(
             tools=tools,
             llm=llm,
             react_chat_formatter=ReActChatFormatter(
@@ -81,7 +77,7 @@ def load_agent(
             ),
             **kwargs
         )
-    return agent
+    )
 
 
 class RAGParams(BaseModel):
@@ -175,15 +171,12 @@ class RAGAgentBuilder:
             reader = SimpleDirectoryReader(input_files=file_names)
             docs = reader.load_data()
             file_paths = file_names
-        elif urls is not None:
+        else:
             from llama_hub.web.simple_web.base import SimpleWebPageReader
             # use simple web page reader from llamahub
             loader = SimpleWebPageReader()
             docs = loader.load_data(urls=urls)
             file_paths = urls
-        else:
-            raise ValueError("Must specify either file_names or urls.")
-        
         self._cache.docs = docs
         self._cache.file_paths = file_paths
         return "Data loaded successfully."
@@ -257,7 +250,6 @@ class RAGAgentBuilder:
         )
         vector_index = VectorStoreIndex.from_documents(docs, service_context=service_context)
         vector_query_engine = vector_index.as_query_engine(similarity_top_k=rag_params.top_k)
-        all_tools = []
         vector_tool = QueryEngineTool(
             query_engine=vector_query_engine,
             metadata=ToolMetadata(
@@ -265,7 +257,7 @@ class RAGAgentBuilder:
                 description=("Use this tool to answer any user question over any data."),
             ),
         )
-        all_tools.append(vector_tool)
+        all_tools = [vector_tool]
         if rag_params.include_summarization:
             summary_index = SummaryIndex.from_documents(docs, service_context=service_context)
             summary_query_engine = summary_index.as_query_engine()
@@ -277,8 +269,8 @@ class RAGAgentBuilder:
                 ),
             )
             all_tools.append(summary_tool)
-        
-        
+
+
         # then we add tools
         all_tools.extend(self._cache.tools)
 
